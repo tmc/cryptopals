@@ -151,3 +151,27 @@ func DecryptAESECB(ciphertext, key []byte) ([]byte, error) {
 	}
 	return plaintext, nil
 }
+
+// HammingDistances returns a list of hamming distances between the blocks in the provided byte slice.
+func HammingDistances(in []byte, blocksize int) ([]int, error) {
+	var results []int
+
+	// TODO: ensure len is multiple of blocksize
+	var blocks [][]byte
+	for i := 0; i < len(in); i += blocksize {
+		blocks = append(blocks, in[i:i+blocksize])
+	}
+	for i := 0; i < len(blocks); i++ {
+		for j := 0; j < len(blocks); j++ {
+			if i == j {
+				continue
+			}
+			d, err := HammingDistance(blocks[i], blocks[j])
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, d)
+		}
+	}
+	return results, nil
+}

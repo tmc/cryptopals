@@ -291,3 +291,48 @@ func TestChallenge7(t *testing.T) {
 	plaintext, err := DecryptAESECB(contents, []byte("YELLOW SUBMARINE"))
 	t.Logf("%q", plaintext)
 }
+
+// TestChallenge8 attempts to detect AES-ECB by finding the lowest hamming distance between two blocks.
+func TestChallenge8(t *testing.T) {
+	f, err := os.Open("8.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	s := bufio.NewScanner(f)
+	var lines [][]byte
+	for s.Scan() {
+		lines = append(lines, []byte(s.Text()))
+	}
+	if s.Err() != nil {
+		t.Error(s.Err())
+	}
+
+	type option struct {
+		in    []byte
+		score int
+	}
+
+	var options []option
+	for _, line := range lines[:] {
+		decoded := make([]byte, hex.DecodedLen(len(line)))
+		_, err := hex.Decode(decoded, line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		scores, err := HammingDistances(decoded, 16)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// sort scores
+		sort.SliceStable(scores, func(i, j int) bool {
+			return scores[i] < scores[j]
+		})
+		options = append(options, option{line, scores[0]})
+	}
+	sort.SliceStable(options, func(i, j int) bool {
+		return options[i].score < options[j].score
+	})
+	// print the line that has the lowest hamming distance between any two blocks
+	t.Logf("%v %s", options[0].score, string(options[0].in))
+}
