@@ -89,7 +89,7 @@ func TestChallenge3(t *testing.T) {
 }
 
 func TestChallenge4(t *testing.T) {
-	f, err := os.Open("4.txt")
+	f, err := os.Open("testdata/set1/4.txt")
 	if err != nil {
 		t.Error(err)
 	}
@@ -248,7 +248,7 @@ func GuessXORKeySize(ciphertext []byte) (int, error) {
 }
 
 func TestChallenge6(t *testing.T) {
-	encoded, err := ioutil.ReadFile("6.txt")
+	encoded, err := ioutil.ReadFile("testdata/set1/6.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestChallenge6(t *testing.T) {
 }
 
 func TestChallenge7(t *testing.T) {
-	encoded, err := ioutil.ReadFile("7.txt")
+	encoded, err := ioutil.ReadFile("testdata/set1/7.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestChallenge7(t *testing.T) {
 
 // TestChallenge8 attempts to detect AES-ECB by finding the lowest hamming distance between two blocks.
 func TestChallenge8(t *testing.T) {
-	f, err := os.Open("8.txt")
+	f, err := os.Open("testdata/set1/8.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
