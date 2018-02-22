@@ -1,6 +1,28 @@
 package cryptopals
 
-import "crypto/aes"
+import (
+	"bytes"
+	"crypto/aes"
+	"crypto/rand"
+	"fmt"
+	"io"
+	mathrand "math/rand"
+)
+
+// PKCS7PaddingBlockSize returns the provided input padded to the given block size.
+func PKCS7PaddingBlockSize(in []byte, blockSize int) []byte {
+	nToAdd := 0
+	m := len(in) % blockSize
+	if m > 0 {
+		nToAdd = blockSize - m
+	}
+	o := make([]byte, len(in))
+	copy(o, in)
+	for i := 0; i < nToAdd; i++ {
+		o = append(o, byte(nToAdd))
+	}
+	return o
+}
 
 // PKCS7Padding returns the provided input padded up to paddingLen.
 func PKCS7Padding(in []byte, paddingLen int) []byte {
@@ -23,8 +45,11 @@ func EncryptAESCBC(plaintext, key, iv []byte) ([]byte, error) {
 	c, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
+
 	}
-	// TODO: ensure len is multiple of blocksize
+	if len(plaintext)%aes.BlockSize != 0 {
+		panic("plaintext must be a multiple of the block size")
+	}
 	ciphertext := make([]byte, len(plaintext))
 	n := len(ciphertext) / c.BlockSize()
 	previousCiphertext := iv
@@ -65,4 +90,48 @@ func DecryptAESCBC(ciphertext, key, iv []byte) ([]byte, error) {
 		previousCiphertext = ciphertext[i*c.BlockSize():]
 	}
 	return plaintext, nil
+}
+
+// RandomAESKey generates a random aes key.
+func RandomAESKey() []byte {
+	result := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(rand.Reader, result); err != nil {
+		panic(err)
+	}
+	return result
+}
+
+type BlockMode int
+
+const (
+	UnkownBlockMode BlockMode = iota
+	ECBBlockMode
+	CBCBlockMode
+)
+
+// EncryptAESWithRandomKey
+func EncryptAESWithRandomKey(plaintext []byte) ([]byte, error) {
+	n := mathrand.Intn(5) + 5
+	content := make([]byte, 0, len(plaintext)+2*n)
+	key := RandomAESKey()
+	iv := RandomAESKey()
+	toAdd := bytes.Repeat([]byte{'\x04'}, n)
+
+	content = append(content, toAdd...)
+	content = append(content, plaintext...)
+	content = append(content, toAdd...)
+	copy(content, toAdd)
+	content = PKCS7PaddingBlockSize(content, aes.BlockSize)
+	fmt.Printf("%q\n", content)
+	if mathrand.Intn(2) == 0 {
+		fmt.Printf("CBC ")
+		return EncryptAESCBC(content, key, iv)
+	}
+	fmt.Printf("ECB ")
+	return EncryptAESECB(content, key)
+}
+
+// DetectECBorCBC
+func DetectECBorCBC(in []byte) BlockMode {
+	return UnkownBlockMode
 }

@@ -152,6 +152,21 @@ func DecryptAESECB(ciphertext, key []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
+// EncryptAESECB decrypts the given ciphertext with the given key in ECB mode.
+func EncryptAESECB(plaintext, key []byte) ([]byte, error) {
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: ensure len is multiple of blocksize
+	ciphertext := make([]byte, len(plaintext))
+	n := len(plaintext) / c.BlockSize()
+	for i := 0; i < n; i++ {
+		c.Encrypt(ciphertext[i*c.BlockSize():], plaintext[i*c.BlockSize():])
+	}
+	return ciphertext, nil
+}
+
 // HammingDistances returns a list of hamming distances between the blocks in the provided byte slice.
 func HammingDistances(in []byte, blocksize int) ([]int, error) {
 	var results []int
