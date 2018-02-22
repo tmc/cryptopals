@@ -72,3 +72,16 @@ func ExampleDecryptAESCBC() {
 	// output:
 	// <nil> "I'm back and I'm ringin' the bell \nA rockin' on "
 }
+
+func ExampleEncryptAESWithRandomKey() {
+	// 41 characters which will guarantee two repeated blocks.
+	plaintext := "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+	for i := 0; i < 10; i++ {
+		b, err := EncryptAESWithRandomKey([]byte(plaintext))
+		if err != nil {
+			fmt.Println(err)
+		}
+		h := hex.EncodeToString(b)
+		fmt.Printf("%#v %q\n", DetectECBorCBC(b), h)
+	}
+}

@@ -190,3 +190,16 @@ func HammingDistances(in []byte, blocksize int) ([]int, error) {
 	}
 	return results, nil
 }
+
+// MinHammingDistance returns the minimum hamming distance between two blocks.
+func MinHammingDistance(in []byte, blocksize int) (int, error) {
+	scores, err := HammingDistances(in, 16)
+	if err != nil {
+		return -1, nil
+	}
+	// sort scores
+	sort.SliceStable(scores, func(i, j int) bool {
+		return scores[i] < scores[j]
+	})
+	return scores[0], nil
+}

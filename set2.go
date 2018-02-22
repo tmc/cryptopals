@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/rand"
-	"fmt"
 	"io"
 	mathrand "math/rand"
 )
@@ -87,7 +86,7 @@ func RandomAESKey() []byte {
 type BlockMode int
 
 const (
-	UnkownBlockMode BlockMode = iota
+	UnknownBlockMode BlockMode = iota
 	ECBBlockMode
 	CBCBlockMode
 )
@@ -105,16 +104,20 @@ func EncryptAESWithRandomKey(plaintext []byte) ([]byte, error) {
 	content = append(content, toAdd...)
 	copy(content, toAdd)
 	content = PKCS7PaddingBlockSize(content, aes.BlockSize)
-	fmt.Printf("%q\n", content)
 	if mathrand.Intn(2) == 0 {
-		fmt.Printf("CBC ")
 		return EncryptAESCBC(content, key, iv)
 	}
-	fmt.Printf("ECB ")
 	return EncryptAESECB(content, key)
 }
 
 // DetectECBorCBC
 func DetectECBorCBC(in []byte) BlockMode {
-	return UnkownBlockMode
+	d, err := MinHammingDistance(in, aes.BlockSize)
+	if err != nil {
+		return UnknownBlockMode
+	}
+	if d == 0 {
+		return ECBBlockMode
+	}
+	return CBCBlockMode
 }
