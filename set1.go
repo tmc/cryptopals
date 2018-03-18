@@ -17,6 +17,8 @@ var (
 	ErrMismatchedLengths = errors.New("mismatched lengths")
 	// ErrEmpty is returned when a necessary value has not been provided.
 	ErrEmpty = errors.New("empty")
+	// ErrNotFound is returned when a searched-for value cannot be determined.
+	ErrNotFound = errors.New("not found")
 )
 
 // Hex2Base64 takes a byte slice of hex-encoded data and produces base64-encoded output.
@@ -158,11 +160,11 @@ func EncryptAESECB(plaintext, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO: ensure len is multiple of blocksize
-	ciphertext := make([]byte, len(plaintext))
-	n := len(plaintext) / c.BlockSize()
+	padded := PKCS7Padding(plaintext, c.BlockSize())
+	ciphertext := make([]byte, len(padded))
+	n := len(padded) / c.BlockSize()
 	for i := 0; i < n; i++ {
-		c.Encrypt(ciphertext[i*c.BlockSize():], plaintext[i*c.BlockSize():])
+		c.Encrypt(ciphertext[i*c.BlockSize():], padded[i*c.BlockSize():])
 	}
 	return ciphertext, nil
 }
@@ -193,7 +195,7 @@ func HammingDistances(in []byte, blocksize int) ([]int, error) {
 
 // MinHammingDistance returns the minimum hamming distance between two blocks.
 func MinHammingDistance(in []byte, blocksize int) (int, error) {
-	scores, err := HammingDistances(in, 16)
+	scores, err := HammingDistances(in, blocksize)
 	if err != nil {
 		return -1, nil
 	}

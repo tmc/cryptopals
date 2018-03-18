@@ -5,6 +5,7 @@ import (
 	"crypto/aes"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"reflect"
@@ -12,7 +13,7 @@ import (
 )
 
 func ExamplePKCS7Padding() {
-	fmt.Printf("%q", PKCS7PaddingBlockSize([]byte("YELLOW SUBMARINE"), 20))
+	fmt.Printf("%q", PKCS7Padding([]byte("YELLOW SUBMARINE"), 20))
 	// output: "YELLOW SUBMARINE\x04\x04\x04\x04"
 }
 
@@ -34,7 +35,7 @@ func TestEncryptAESCBC(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pt := PKCS7PaddingBlockSize(tt.args.plaintext, aes.BlockSize)
+			pt := PKCS7Padding(tt.args.plaintext, aes.BlockSize)
 			got, err := EncryptAESCBC(pt, tt.args.key, tt.args.iv)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("EncryptAESCBC() error = %v, wantErr %v", err, tt.wantErr)
@@ -84,4 +85,111 @@ func ExampleEncryptAESWithRandomKey() {
 		h := hex.EncodeToString(b)
 		fmt.Printf("%#v %q\n", DetectECBorCBC(b), h)
 	}
+}
+
+func ExampleChallenge12ByteAtATimeDecryption() {
+	var encryptionFn func([]byte) ([]byte, error) = EncryptAESECBUnknownButConsistentKeyWithSuffix
+	justAs := bytes.Repeat([]byte(`A`), 128)
+
+	// determine block size
+	blockSize, err := DetermineBlockSize(encryptionFn)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println("blocksize:", blockSize)
+
+	//paddedAs := PKCS7Padding(justAs, blockSize)
+	paddedAs := justAs
+	encryptedAs, err := encryptionFn(paddedAs)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// determine that this is ECB
+	blockMode := DetectECBorCBC(encryptedAs)
+	fmt.Println(blockMode)
+
+	nothingEncrypted, err := encryptionFn([]byte{})
+	if err != nil {
+		fmt.Println(err)
+	}
+	in := bytes.Repeat([]byte(`A`), blockSize)
+	blockMap := make(map[string]byte)
+
+	nBlocks := len(nothingEncrypted) / blockSize
+	var plaintext []byte
+	for block := 0; block < nBlocks; block++ {
+		for i := 0; i < blockSize; i++ {
+			for j := 0; j < 256; j++ {
+				in[len(in)-1] = byte(j)
+
+				enc, err := encryptionFn(in)
+				key := fmt.Sprintf("%x", enc[:blockSize])
+				if err != nil {
+					fmt.Println(err)
+				}
+				blockMap[key] = byte(j)
+			}
+
+			enc, err := encryptionFn(in[:blockSize-1-(i%blockSize)])
+			if err != nil {
+				fmt.Println(err)
+			}
+			key := fmt.Sprintf("%x", enc[block*blockSize:(block+1)*blockSize])
+
+			b := blockMap[key]
+			in[len(in)-1] = b
+			in = append(in[1:], 'x')
+			plaintext = append(plaintext, b)
+		}
+	}
+	fmt.Printf("%q\n", plaintext)
+
+	// output:
+	// blocksize: 16
+	// ECBBlockMode
+	// "Rollin' in my 5.0\nWith my rag-top down so my hair can blow\nThe girlies on standby waving just to say hi\nDid you stop? No, I just drove by\n\x01\x00\x00\x00\x00\x00"
+}
+
+func ExampleChallenge13ParseKV() {
+	i := "foo=bar&baz=qux&zap=zazzle"
+	v, err := parseKV(i)
+	if err != nil {
+		fmt.Println(err)
+	}
+	enc, err := json.Marshal(v)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(string(enc))
+	// output:
+	// {"baz":"qux","foo":"bar","zap":"zazzle"}
+}
+
+func ExampleChallenge13ProfileFor() {
+	v := profileFor("foo@bar.com&role=admin")
+	enc, err := json.Marshal(v)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(string(enc))
+	fmt.Println(encodeProfile(v))
+	// output:
+	// {"email":"foo@bar.com\u0026role=admin","role":"user","uid":"10"}
+}
+
+func ExampleChallenge13() {
+	enc := encryptProfile(profileFor("foo@bar.com"))
+	dec, err := decryptProfile(enc)
+	if err != nil {
+		fmt.Println(err)
+	}
+	asjson, err := json.Marshal(dec)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(string(asjson))
+	fmt.Println(encodeProfile(dec))
+	// output:
+	//
 }

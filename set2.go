@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/rand"
+	"encoding/base64"
 	"io"
 	mathrand "math/rand"
+	"net/url"
 )
 
-// PKCS7PaddingBlockSize returns the provided input padded to the given block size.
-func PKCS7PaddingBlockSize(in []byte, blockSize int) []byte {
+type EncryptionFunc func([]byte) ([]byte, error)
+
+// PKCS7Padding returns the provided input padded to the given block size.
+func PKCS7Padding(in []byte, blockSize int) []byte {
 	n := blockSize - len(in)%blockSize
 	o := make([]byte, len(in))
 	copy(o, in)
@@ -103,14 +107,14 @@ func EncryptAESWithRandomKey(plaintext []byte) ([]byte, error) {
 	content = append(content, plaintext...)
 	content = append(content, toAdd...)
 	copy(content, toAdd)
-	content = PKCS7PaddingBlockSize(content, aes.BlockSize)
+	content = PKCS7Padding(content, aes.BlockSize)
 	if mathrand.Intn(2) == 0 {
 		return EncryptAESCBC(content, key, iv)
 	}
 	return EncryptAESECB(content, key)
 }
 
-// DetectECBorCBC
+// DetectECBorCBC is our oracle for detecting ECB vs CBC.
 func DetectECBorCBC(in []byte) BlockMode {
 	d, err := MinHammingDistance(in, aes.BlockSize)
 	if err != nil {
@@ -120,4 +124,107 @@ func DetectECBorCBC(in []byte) BlockMode {
 		return ECBBlockMode
 	}
 	return CBCBlockMode
+}
+
+var arbitraryECBKey []byte
+
+var contentToAppend = []byte(`Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg` +
+	`aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq` +
+	`dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg` +
+	`YnkK`)
+
+// EncryptAESECBUnknownButConsistentKey
+func EncryptAESECBUnknownButConsistentKey(plaintext []byte) ([]byte, error) {
+	if arbitraryECBKey == nil {
+		arbitraryECBKey = RandomAESKey()
+	}
+	return EncryptAESECB(plaintext, arbitraryECBKey)
+}
+
+// DecryptAESECBUnknownButConsistentKey
+func DecryptAESECBUnknownButConsistentKey(ciphertext []byte) ([]byte, error) {
+	if arbitraryECBKey == nil {
+		arbitraryECBKey = RandomAESKey()
+	}
+	return DecryptAESECB(ciphertext, arbitraryECBKey)
+}
+
+// EncryptAESECBUnknownButConsistentKeyWithSuffix
+func EncryptAESECBUnknownButConsistentKeyWithSuffix(plaintext []byte) ([]byte, error) {
+	if arbitraryECBKey == nil {
+		arbitraryECBKey = RandomAESKey()
+	}
+	contents := make([]byte, base64.StdEncoding.DecodedLen(len(contentToAppend)))
+	if _, err := base64.StdEncoding.Decode(contents, contentToAppend); err != nil {
+		return nil, err
+	}
+	plaintext = append(plaintext, contents...)
+	return EncryptAESECB(plaintext, arbitraryECBKey)
+}
+
+// DetermineBlockSize returns the block sie of the given encryption function in bytes.
+func DetermineBlockSize(fn EncryptionFunc) (int, error) {
+	// encrypt 1024 extra bits and check for ciphertext block matches
+	in := bytes.Repeat([]byte{'A'}, 128)
+	output, err := fn(in)
+	if err != nil {
+		return -1, err
+	}
+	for i := 2; i < 1024; i = i * 2 {
+		c := bytes.Compare(output[:i], output[i:i*2])
+		if c == 0 {
+			return i, nil
+		}
+	}
+	return -1, ErrNotFound
+}
+
+func parseKV(i string) (map[string]string, error) {
+	v, err := url.ParseQuery(i)
+	result := make(map[string]string)
+	for k := range v {
+		result[k] = v.Get(k)
+	}
+	return result, err
+}
+
+func profileFor(email string) map[string]string {
+	u := url.Values{}
+	u.Set("uid", "10")
+	u.Set("email", email)
+	u.Set("role", "user")
+	v, err := parseKV(u.Encode())
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+func encodeProfile(profile map[string]string) string {
+	u := url.Values{}
+	u.Set("uid", profile["uid"])
+	u.Set("email", profile["email"])
+	u.Set("role", profile["role"])
+	return u.Encode()
+}
+
+func encryptProfile(profile map[string]string) string {
+	e := encodeProfile(profile)
+	enc, err := EncryptAESECBUnknownButConsistentKey([]byte(e))
+	if err != nil {
+		return err.Error()
+	}
+	return string(enc)
+}
+
+func decryptProfile(profile string) (map[string]string, error) {
+	dec, err := DecryptAESECBUnknownButConsistentKey([]byte(profile))
+	if err != nil {
+		return nil, err
+	}
+	p, err := parseKV(string(dec))
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
 }
