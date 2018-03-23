@@ -12,7 +12,7 @@ import (
 )
 
 func ExamplePKCS7Padding() {
-	fmt.Printf("%q", PKCS7Padding([]byte("YELLOW SUBMARINE"), 20))
+	fmt.Printf("%q", PKCS7PaddingBlockSize([]byte("YELLOW SUBMARINE"), 20))
 	// output: "YELLOW SUBMARINE\x04\x04\x04\x04"
 }
 

@@ -11,28 +11,11 @@ import (
 
 // PKCS7PaddingBlockSize returns the provided input padded to the given block size.
 func PKCS7PaddingBlockSize(in []byte, blockSize int) []byte {
-	nToAdd := 0
-	m := len(in) % blockSize
-	if m > 0 {
-		nToAdd = blockSize - m
-	}
+	n := blockSize - len(in)%blockSize
 	o := make([]byte, len(in))
 	copy(o, in)
-	for i := 0; i < nToAdd; i++ {
-		o = append(o, byte(nToAdd))
-	}
-	return o
-}
-
-// PKCS7Padding returns the provided input padded up to paddingLen.
-func PKCS7Padding(in []byte, paddingLen int) []byte {
-	o := make([]byte, len(in))
-	copy(o, in)
-	if len(in) > paddingLen {
-		return o
-	}
-	for len(o) < paddingLen {
-		o = append(o, '\x04')
+	for i := 0; i < n; i++ {
+		o = append(o, byte(n))
 	}
 	return o
 }
