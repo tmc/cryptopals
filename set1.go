@@ -151,7 +151,8 @@ func DecryptAESECB(ciphertext, key []byte) ([]byte, error) {
 	for i := 0; i < n; i++ {
 		c.Decrypt(plaintext[i*c.BlockSize():], ciphertext[i*c.BlockSize():])
 	}
-	return plaintext, nil
+	paddingLen := int(plaintext[len(plaintext)-1])
+	return plaintext[:len(plaintext)-paddingLen], nil
 }
 
 // EncryptAESECB decrypts the given ciphertext with the given key in ECB mode.
