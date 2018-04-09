@@ -5,9 +5,11 @@ import (
 	"crypto/aes"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"io"
 	mathrand "math/rand"
 	"net/url"
+	"strings"
 )
 
 type EncryptionFunc func([]byte) ([]byte, error)
@@ -201,11 +203,11 @@ func profileFor(email string) map[string]string {
 }
 
 func encodeProfile(profile map[string]string) string {
-	u := url.Values{}
-	u.Set("uid", profile["uid"])
-	u.Set("email", profile["email"])
-	u.Set("role", profile["role"])
-	return u.Encode()
+	var parts []string
+	for _, k := range []string{"email", "uid", "role"} {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, profile[k]))
+	}
+	return strings.Join(parts, "&")
 }
 
 func encryptProfile(profile map[string]string) string {

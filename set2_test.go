@@ -167,29 +167,28 @@ func ExampleChallenge13ParseKV() {
 }
 
 func ExampleChallenge13ProfileFor() {
-	v := profileFor("foo@bar.com&role=admin")
-	enc, err := json.Marshal(v)
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println(string(enc))
-	fmt.Println(encodeProfile(v))
+	fmt.Println(encodeProfile(profileFor("foo@bar.com")))
 	// output:
-	// {"email":"foo@bar.com\u0026role=admin","role":"user","uid":"10"}
+	// email=foo@bar.com&uid=10&role=user
 }
 
-func ExampleChallenge13() {
-	enc := encryptProfile(profileFor("foo@bar.com"))
+func ExampleChallenge13ProfileFort() {
+	enc := encryptProfile(profileFor("fooAA@bar.com"))
 	dec, err := decryptProfile(enc)
 	if err != nil {
 		fmt.Println(err)
 	}
-	asjson, err := json.Marshal(dec)
+	s := "AAAAAAAAAAadmin" // generates block starting with "admin"
+	s2enc := encryptProfile(profileFor(s))
+	s3src := "AAAAAAAAA" // produces a full padding block
+	s3enc := encryptProfile(profileFor(s3src))
+
+	resultenc := enc[:32] + s2enc[16:32] + s3enc[32:]
+	dec, err = decryptProfile(resultenc)
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(string(asjson))
-	fmt.Println(encodeProfile(dec))
+	fmt.Println(string(encodeProfile(dec)))
 	// output:
-	//
+	// email=fooAA@bar.com&uid=10&role=admin
 }
