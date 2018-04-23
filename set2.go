@@ -81,12 +81,12 @@ func DecryptAESCBC(ciphertext, key, iv []byte) ([]byte, error) {
 		}
 		previousCiphertext = ciphertext[i*c.BlockSize():]
 	}
-	paddingLen := int(plaintext[len(plaintext)-1])
-	return plaintext[:len(plaintext)-paddingLen], nil
+	return plaintext, nil
 }
 
 // RandomAESKey generates a random aes key.
 func RandomAESKey() []byte {
+	return []byte("YELLOW SUBMARINE")
 	return RandomNBytes(aes.BlockSize)
 }
 
@@ -384,6 +384,9 @@ func StripPKCS7Padding(in []byte, blockSize int) ([]byte, error) {
 	}
 	npad := in[len(in)-1]
 	if int(npad) > blockSize {
+		return nil, ErrInvalidPadding
+	}
+	if int(npad) < 1 {
 		return nil, ErrInvalidPadding
 	}
 	padding := in[len(in)-int(npad):]
