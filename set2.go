@@ -39,17 +39,15 @@ func EncryptAESCBC(plaintext, key, iv []byte) ([]byte, error) {
 		return nil, err
 
 	}
-	if len(plaintext)%aes.BlockSize != 0 {
-		panic("plaintext must be a multiple of the block size")
-	}
-	ciphertext := make([]byte, len(plaintext))
+	padded := PKCS7Padding(plaintext, c.BlockSize())
+	ciphertext := make([]byte, len(padded))
 	n := len(ciphertext) / c.BlockSize()
 	previousCiphertext := iv
 	for i := 0; i < n; i++ {
 		// first place the plaintext xor'd with the previous ciphertext into the destination
 		for j := 0; j < c.BlockSize(); j++ {
 			idx := (i * c.BlockSize()) + j
-			ciphertext[idx] = plaintext[idx] ^ previousCiphertext[j]
+			ciphertext[idx] = padded[idx] ^ previousCiphertext[j]
 		}
 		// replace block in ciphertext with result of the encryption.
 		c.Encrypt(ciphertext[i*c.BlockSize():], ciphertext[i*c.BlockSize():])
@@ -67,7 +65,9 @@ func DecryptAESCBC(ciphertext, key, iv []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO: ensure len is multiple of blocksize
+	if len(ciphertext)%aes.BlockSize != 0 {
+		panic("ciphertext must be a multiple of the block size")
+	}
 	plaintext := make([]byte, len(ciphertext))
 	n := len(plaintext) / c.BlockSize()
 	previousCiphertext := iv
@@ -81,7 +81,8 @@ func DecryptAESCBC(ciphertext, key, iv []byte) ([]byte, error) {
 		}
 		previousCiphertext = ciphertext[i*c.BlockSize():]
 	}
-	return plaintext, nil
+	paddingLen := int(plaintext[len(plaintext)-1])
+	return plaintext[:len(plaintext)-paddingLen], nil
 }
 
 // RandomAESKey generates a random aes key.
@@ -135,6 +136,24 @@ func DetectECBorCBC(in []byte) BlockMode {
 		return ECBBlockMode
 	}
 	return CBCBlockMode
+}
+
+var arbitraryCBCKey []byte
+
+// EncryptAESCBCUnknownButConsistentKey
+func EncryptAESCBCUnknownButConsistentKey(plaintext []byte) ([]byte, error) {
+	if arbitraryCBCKey == nil {
+		arbitraryCBCKey = RandomAESKey()
+	}
+	return EncryptAESCBC(plaintext, arbitraryCBCKey, bytes.Repeat([]byte{byte(0x0)}, aes.BlockSize))
+}
+
+// DecryptAESCBCUnknownButConsistentKey
+func DecryptAESCBCUnknownButConsistentKey(ciphertext []byte) ([]byte, error) {
+	if arbitraryCBCKey == nil {
+		arbitraryCBCKey = RandomAESKey()
+	}
+	return DecryptAESCBC(ciphertext, arbitraryCBCKey, bytes.Repeat([]byte{byte(0x0)}, aes.BlockSize))
 }
 
 var arbitraryECBKey []byte
@@ -353,4 +372,37 @@ func DecryptAESECBSuffix(encryptionFn EncryptionFunc) ([]byte, error) {
 		}
 	}
 	return plaintext, nil
+}
+
+// StripPKCS7Padding returns an unpadded version of the input or a non-nil error if the PKCS7 padding is invalid.
+func StripPKCS7Padding(in []byte, blockSize int) ([]byte, error) {
+	if len(in) == 0 {
+		return nil, ErrEmpty
+	}
+	if len(in)%blockSize != 0 {
+		return nil, ErrMismatchedLength
+	}
+	npad := in[len(in)-1]
+	if int(npad) > blockSize {
+		return nil, ErrInvalidPadding
+	}
+	padding := in[len(in)-int(npad):]
+
+	for _, c := range padding {
+		if c != npad {
+			return nil, ErrInvalidPadding
+		}
+	}
+	return in[:len(in)-int(npad)], nil
+}
+
+func challenge16Encrypt(in []byte) ([]byte, error) {
+	s := "comment1=cooking%20MCs;userdata="
+	s += url.QueryEscape(string(in))
+	s += ";comment2=%20like%20a%20pound%20of%20bacon"
+	return EncryptAESCBCUnknownButConsistentKey([]byte(s))
+}
+
+func challenge16Decrypt(ciphertext []byte) ([]byte, error) {
+	return DecryptAESCBCUnknownButConsistentKey([]byte(ciphertext))
 }

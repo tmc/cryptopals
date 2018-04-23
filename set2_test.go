@@ -156,3 +156,102 @@ func ExampleChallenge14() {
 	// output:
 	// "Rollin' in my 5.0\nWith my rag-top down so my hair can blow\nThe girlies on standby waving just to say hi\nDid you stop? No, I just drove by\n\x01\x00\x00\x00\x00\x00"
 }
+
+func TestStripPKCS7Padding(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []byte
+		want    []byte
+		wantErr bool
+	}{
+		{"empty", []byte(""), nil, true},
+		{"ok",
+			[]byte("ICE ICE BABY\x04\x04\x04\x04"),
+			[]byte("ICE ICE BABY"),
+			false},
+		{"bad1",
+			[]byte("ICE ICE BABY\x05\x05\x05\x05"),
+			nil, true},
+		{"bad2",
+			[]byte("ICE ICE BABY\x01\x02\x03\x04"),
+			nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := StripPKCS7Padding([]byte(tt.args), aes.BlockSize)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("StripPKCS7Padding() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("StripPKCS7Padding() = %q, want %q", got, tt.want)
+			}
+			if tt.wantErr {
+				return
+			}
+		})
+	}
+
+}
+
+func s2b(s string) string {
+	result := ""
+	for _, c := range s {
+		result = fmt.Sprintf("%s%.8b", result, c)
+	}
+	return result
+}
+
+func sxor(a, b string) string {
+	result := []byte{}
+	for i := range a {
+		result = append(result, a[i]^b[i])
+	}
+	return string(result)
+}
+
+func ExampleChallenge16() {
+	// find close chars
+	/*
+		for i := 0; i < 256; i++ {
+			d, _ := HammingDistance([]byte{';'}, []byte{byte(i)})
+			if d == 1 {
+				fmt.Println(";", string([]byte{byte(i)}))
+			}
+		}
+		// -> 9 is 1 bit away
+		for i := 0; i < 256; i++ {
+			d, _ := HammingDistance([]byte{'='}, []byte{byte(i)})
+			if d == 1 {
+				fmt.Println("=", string([]byte{byte(i)}))
+			}
+		}
+		// -> 9 is also 1 bit away
+	*/
+	// 32
+	//prefix := "comment1=cooking%20MCs;userdata="
+	// 42
+	//suffix := ";comment2=%20like%20a%20pound%20of%20bacon"
+
+	b1 := "AAAAAAAAAAAAAAAA"
+	b2 := "9admin9true9AAAA"
+	b3 := ";admin=true;AAAA"
+	b4 := sxor(b2, b3)
+
+	ct, err := challenge16Encrypt([]byte(b1 + b2))
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// xor provided and intended with previous block in ciphertext
+	b5 := sxor(string(ct[32:48]), b4)
+	copy(ct[32:48], []byte(b5))
+	result, err := challenge16Decrypt(ct)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("%s\n", result)
+	fmt.Println(bytes.Contains(result, []byte(";admin=true;")))
+	// output:
+	// true
+}

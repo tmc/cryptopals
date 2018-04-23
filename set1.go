@@ -13,12 +13,14 @@ import (
 )
 
 var (
-	// ErrMismatchedLengths is returned when parameters violate a length-matching invariant.
-	ErrMismatchedLengths = errors.New("mismatched lengths")
+	// ErrMismatchedLength is returned when parameters violate a length-matching invariant.
+	ErrMismatchedLength = errors.New("mismatched lengths")
 	// ErrEmpty is returned when a necessary value has not been provided.
 	ErrEmpty = errors.New("empty")
 	// ErrNotFound is returned when a searched-for value cannot be determined.
 	ErrNotFound = errors.New("not found")
+	// ErrInvalidPadding  is returned when a value is improperly padded.
+	ErrInvalidPadding = errors.New("invalid padding")
 )
 
 // Hex2Base64 takes a byte slice of hex-encoded data and produces base64-encoded output.
@@ -37,7 +39,7 @@ func Hex2Base64(in []byte) ([]byte, error) {
 // XORHexSlices takes a two byte slices of hex-encoded data and produces the hex-encoded XOR result.
 func XORHexSlices(a, b []byte) ([]byte, error) {
 	if len(a) != len(b) {
-		return nil, ErrMismatchedLengths
+		return nil, ErrMismatchedLength
 	}
 	da := make([]byte, hex.DecodedLen(len(a)))
 	if _, err := hex.Decode(da, a); err != nil {
@@ -68,7 +70,7 @@ func RepeatingXOR(plaintext, key []byte) ([]byte, error) {
 func HammingDistance(a, b []byte) (int, error) {
 	n := 0
 	if len(a) != len(b) {
-		return 0, ErrMismatchedLengths
+		return 0, ErrMismatchedLength
 	}
 
 	for i := range a {
