@@ -31,7 +31,8 @@ func TestEncryptAESCBC(t *testing.T) {
 		wantErr bool
 	}{
 		//{"nils", args{nil, nil, nil}, nil, true},
-		{"example", args{[]byte("exampleplaintext"), exampleKey, bytes.Repeat([]byte{byte(0x0)}, aes.BlockSize)}, []byte("\xf4%\x12\xe1\xe4\x03\x92\x13\xbdD\x9b\xa4\u007f\xaa\x1bt"), false},
+		{"example", args{[]byte("exampleplaintext"), exampleKey, bytes.Repeat([]byte{byte(0x0)}, aes.BlockSize)}, []byte(
+			"\xf4%\x12\xe1\xe4\x03\x92\x13\xbdD\x9b\xa4\u007f\xaa\x1bt\b\xea\xc4]\xbfSnP\x16Q\x1f\x86\x03W\a\xc6"), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -88,66 +89,14 @@ func ExampleEncryptAESWithRandomKey() {
 }
 
 func ExampleChallenge12ByteAtATimeDecryption() {
-	var encryptionFn func([]byte) ([]byte, error) = EncryptAESECBUnknownButConsistentKeyWithSuffix
-	justAs := bytes.Repeat([]byte(`A`), 128)
+	var encryptionFn EncryptionFunc = EncryptAESECBUnknownButConsistentKeyWithSuffix
 
-	// determine block size
-	blockSize, err := DetermineBlockSize(encryptionFn)
+	result, err := DecryptAESECBSuffix(encryptionFn)
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println("blocksize:", blockSize)
-
-	//paddedAs := PKCS7Padding(justAs, blockSize)
-	paddedAs := justAs
-	encryptedAs, err := encryptionFn(paddedAs)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	// determine that this is ECB
-	blockMode := DetectECBorCBC(encryptedAs)
-	fmt.Println(blockMode)
-
-	nothingEncrypted, err := encryptionFn([]byte{})
-	if err != nil {
-		fmt.Println(err)
-	}
-	in := bytes.Repeat([]byte(`A`), blockSize)
-	blockMap := make(map[string]byte)
-
-	nBlocks := len(nothingEncrypted) / blockSize
-	var plaintext []byte
-	for block := 0; block < nBlocks; block++ {
-		for i := 0; i < blockSize; i++ {
-			for j := 0; j < 256; j++ {
-				in[len(in)-1] = byte(j)
-
-				enc, err := encryptionFn(in)
-				key := fmt.Sprintf("%x", enc[:blockSize])
-				if err != nil {
-					fmt.Println(err)
-				}
-				blockMap[key] = byte(j)
-			}
-
-			enc, err := encryptionFn(in[:blockSize-1-(i%blockSize)])
-			if err != nil {
-				fmt.Println(err)
-			}
-			key := fmt.Sprintf("%x", enc[block*blockSize:(block+1)*blockSize])
-
-			b := blockMap[key]
-			in[len(in)-1] = b
-			in = append(in[1:], 'x')
-			plaintext = append(plaintext, b)
-		}
-	}
-	fmt.Printf("%q\n", plaintext)
-
+	fmt.Printf("%q\n", result)
 	// output:
-	// blocksize: 16
-	// ECBBlockMode
 	// "Rollin' in my 5.0\nWith my rag-top down so my hair can blow\nThe girlies on standby waving just to say hi\nDid you stop? No, I just drove by\n\x01\x00\x00\x00\x00\x00"
 }
 
@@ -191,4 +140,19 @@ func ExampleChallenge13ProfileFort() {
 	fmt.Println(string(encodeProfile(dec)))
 	// output:
 	// email=fooAA@bar.com&uid=10&role=admin
+}
+
+func ExampleChallenge14() {
+	// random-prefix | attacker-controlled | target | random-kkey
+	var encryptionFn func([]byte) ([]byte, error) = EncryptAESECBUnknownButConsistentKeyWithPrefixAndSuffix
+	//var encryptionFn func([]byte) ([]byte, error) = EncryptAESECBUnknownButConsistentKeyWithSuffix
+	//var encryptionFn func([]byte) ([]byte, error) = EncryptAESECBUnknownButConsistentKey
+
+	result, err := DecryptAESECBSuffix(encryptionFn)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("%q\n", result)
+	// output:
+	// "Rollin' in my 5.0\nWith my rag-top down so my hair can blow\nThe girlies on standby waving just to say hi\nDid you stop? No, I just drove by\n\x01\x00\x00\x00\x00\x00"
 }

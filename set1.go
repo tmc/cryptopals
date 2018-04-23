@@ -174,10 +174,13 @@ func EncryptAESECB(plaintext, key []byte) ([]byte, error) {
 func HammingDistances(in []byte, blocksize int) ([]int, error) {
 	var results []int
 
-	// TODO: ensure len is multiple of blocksize
 	var blocks [][]byte
-	for i := 0; i < len(in); i += blocksize {
-		blocks = append(blocks, in[i:i+blocksize])
+	padded := in
+	if len(padded)%blocksize != 0 {
+		padded = PKCS7Padding(in, blocksize)
+	}
+	for i := 0; i < len(padded)-1; i += blocksize {
+		blocks = append(blocks, padded[i:i+blocksize])
 	}
 	for i := 0; i < len(blocks); i++ {
 		for j := 0; j < len(blocks); j++ {
@@ -194,6 +197,30 @@ func HammingDistances(in []byte, blocksize int) ([]int, error) {
 	return results, nil
 }
 
+// HammingDistancesMap returns a map of hamming distances between the blocks in the provided byte slice.
+func HammingDistancesMap(in []byte, blocksize int) (map[int][]int, error) {
+	results := make(map[int][]int)
+
+	var blocks [][]byte
+	padded := in
+	if len(padded)%blocksize != 0 {
+		padded = PKCS7Padding(in, blocksize)
+	}
+	for i := 0; i < len(padded)-1; i += blocksize {
+		blocks = append(blocks, padded[i:i+blocksize])
+	}
+	for i := 0; i < len(blocks); i++ {
+		for j := 0; j < len(blocks); j++ {
+			d, err := HammingDistance(blocks[i], blocks[j])
+			if err != nil {
+				return nil, err
+			}
+			results[i] = append(results[i], d)
+		}
+	}
+	return results, nil
+}
+
 // MinHammingDistance returns the minimum hamming distance between two blocks.
 func MinHammingDistance(in []byte, blocksize int) (int, error) {
 	scores, err := HammingDistances(in, blocksize)
@@ -205,4 +232,44 @@ func MinHammingDistance(in []byte, blocksize int) (int, error) {
 		return scores[i] < scores[j]
 	})
 	return scores[0], nil
+}
+
+// NumMatchingBlocks computes the number of blocks that match for the given block size.
+func NumMatchingBlocks(in []byte, blocksize int) (int, error) {
+	scores, err := HammingDistances(in, blocksize)
+	if err != nil {
+		return -1, nil
+	}
+	// sort scores
+	sort.SliceStable(scores, func(i, j int) bool {
+		return scores[i] < scores[j]
+	})
+
+	var i int
+	for i = 0; scores[i] == 0; i++ {
+	}
+	// discount i == j
+	return (i - 1) / 2, nil
+}
+
+// NumRepeatingBlocks computes the longest run of repeated blocks and the position of the beginning of the run in the given input.
+func NumRepeatingBlocks(in []byte, blocksize int) (int, int, error) {
+	padded := PKCS7Padding(in, blocksize)
+	scores, err := HammingDistancesMap(padded, blocksize)
+	if err != nil {
+		return -1, -1, nil
+	}
+	longest := 0
+	longestStartBlock := 0
+	for i := 0; i < len(scores)-1; i++ {
+		j := i + 1
+		for ; scores[i][j] == 0; j++ {
+		}
+		c := j - (i + 1)
+		if c > longest {
+			longest = c
+			longestStartBlock = i
+		}
+	}
+	return longest, longestStartBlock, nil
 }

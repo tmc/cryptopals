@@ -10,7 +10,11 @@ import (
 	mathrand "math/rand"
 	"net/url"
 	"strings"
+
+	"github.com/pkg/errors"
 )
+
+const MaxPrefix = 1024 // only check for up to this size of fixed prefix in unknown ECB encryption function.
 
 type EncryptionFunc func([]byte) ([]byte, error)
 
@@ -82,7 +86,12 @@ func DecryptAESCBC(ciphertext, key, iv []byte) ([]byte, error) {
 
 // RandomAESKey generates a random aes key.
 func RandomAESKey() []byte {
-	result := make([]byte, aes.BlockSize)
+	return RandomNBytes(aes.BlockSize)
+}
+
+// RandomBytes generates a random set of bytes.
+func RandomNBytes(n int) []byte {
+	result := make([]byte, n)
 	if _, err := io.ReadFull(rand.Reader, result); err != nil {
 		panic(err)
 	}
@@ -164,21 +173,69 @@ func EncryptAESECBUnknownButConsistentKeyWithSuffix(plaintext []byte) ([]byte, e
 	return EncryptAESECB(plaintext, arbitraryECBKey)
 }
 
-// DetermineBlockSize returns the block sie of the given encryption function in bytes.
+var arbitraryECBPrefix []byte
+
+// EncryptAESECBUnknownButConsistentKeyWithPrefixAndSuffix
+func EncryptAESECBUnknownButConsistentKeyWithPrefixAndSuffix(plaintext []byte) ([]byte, error) {
+	if arbitraryECBKey == nil {
+		arbitraryECBKey = RandomAESKey()
+	}
+	if arbitraryECBPrefix == nil {
+		n := mathrand.Intn(128)
+		arbitraryECBPrefix = RandomNBytes(n)
+	}
+	suffix := make([]byte, base64.StdEncoding.DecodedLen(len(contentToAppend)))
+	if _, err := base64.StdEncoding.Decode(suffix, contentToAppend); err != nil {
+		return nil, err
+	}
+	p := make([]byte, len(arbitraryECBPrefix))
+	copy(p, arbitraryECBPrefix)
+	p = append(p, plaintext...)
+	p = append(p, suffix...)
+	return EncryptAESECB(p, arbitraryECBKey)
+}
+
+// DetermineBlockSize returns the block size of the given encryption function in bytes.
 func DetermineBlockSize(fn EncryptionFunc) (int, error) {
-	// encrypt 1024 extra bits and check for ciphertext block matches
-	in := bytes.Repeat([]byte{'A'}, 128)
-	output, err := fn(in)
+	buf := []byte{}
+	c, err := fn(buf)
 	if err != nil {
 		return -1, err
 	}
-	for i := 2; i < 1024; i = i * 2 {
-		c := bytes.Compare(output[:i], output[i:i*2])
-		if c == 0 {
-			return i, nil
+	ctlen := func(b []byte) int {
+		c, _ := fn(b)
+		return len(c)
+	}
+	for i := 0; ctlen(buf) == len(c); i++ {
+		buf = append(buf, 'A')
+	}
+	return ctlen(buf) - len(c), nil
+}
+
+// DeterminePrefixSize returns the size necessary to include in a plaintext prefix to have the next bytes at the start of a new ECB block.
+func DeterminePrefixSize(fn EncryptionFunc) (n, blocks int, err error) {
+	blocksize, err := DetermineBlockSize(fn)
+	if err != nil {
+		return -1, -1, errors.Wrap(err, "DetermineBlockSize")
+	}
+	for i := 0; i < MaxPrefix; i++ {
+		// TODO: this assumes the prefix doesn't end in A
+		k := (2 * blocksize) + i
+		in := bytes.Repeat([]byte{'A'}, k)
+		in = append(in, bytes.Repeat([]byte{'B'}, blocksize)...)
+		output, err := fn(in)
+		if err != nil {
+			return -1, -1, err
+		}
+		nr, bs, err := NumRepeatingBlocks(output, blocksize)
+		if err != nil {
+			return -1, -1, errors.Wrap(err, "NumRepeatingBlocks")
+		}
+		if nr > 0 {
+			return i, bs, nil
 		}
 	}
-	return -1, ErrNotFound
+	return -1, -1, ErrNotFound
 }
 
 func parseKV(i string) (map[string]string, error) {
@@ -229,4 +286,71 @@ func decryptProfile(profile string) (map[string]string, error) {
 		return nil, err
 	}
 	return p, nil
+}
+
+func DecryptAESECBSuffix(encryptionFn EncryptionFunc) ([]byte, error) {
+
+	// determine block size
+	blockSize, err := DetermineBlockSize(encryptionFn)
+	if err != nil {
+		return nil, err
+	}
+
+	encryptedAs, err := encryptionFn(bytes.Repeat([]byte(`A`), blockSize*3))
+	if err != nil {
+		return nil, err
+	}
+
+	// determine that this is ECB
+	blockMode := DetectECBorCBC(encryptedAs)
+	if blockMode != ECBBlockMode {
+		return nil, errors.New("not ECB")
+	}
+
+	// determine prefix needed
+	prefixLen, prefixBlocks, err := DeterminePrefixSize(encryptionFn)
+	if err != nil {
+		return nil, errors.Wrap(err, "DeterminePrefixSize")
+	}
+
+	basePrefix := bytes.Repeat([]byte(`X`), prefixLen)
+	nothingEncrypted, err := encryptionFn(basePrefix)
+	if err != nil {
+		return nil, err
+	}
+
+	in := bytes.Repeat([]byte(`A`), blockSize)
+	blockMap := make(map[string]byte)
+
+	nBlocks := len(nothingEncrypted) / blockSize
+
+	var plaintext []byte
+
+	for block := prefixBlocks; block < nBlocks; block++ {
+		for i := 0; i < blockSize; i++ {
+			k := prefixBlocks * blockSize
+			for j := 0; j < 256; j++ {
+				in[len(in)-1] = byte(j)
+
+				enc, err := encryptionFn(append(basePrefix, in...))
+				key := fmt.Sprintf("%x", enc[k:k+blockSize])
+				if err != nil {
+					return nil, err
+				}
+				blockMap[key] = byte(j)
+			}
+
+			enc, err := encryptionFn(append(basePrefix, in[:blockSize-1-(i%blockSize)]...))
+			if err != nil {
+				return nil, err
+			}
+			key := fmt.Sprintf("%x", enc[block*blockSize:(block+1)*blockSize])
+
+			b := blockMap[key]
+			in[len(in)-1] = b
+			in = append(in[1:], 'x')
+			plaintext = append(plaintext, b)
+		}
+	}
+	return plaintext, nil
 }
